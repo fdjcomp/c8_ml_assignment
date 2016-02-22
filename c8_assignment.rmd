@@ -1,0 +1,219 @@
+---
+title: "Qualitative activity recognition"
+author: "FDJ"
+date: "February 26, 2016"
+output: pdf_document
+---
+
+```{r setoptions, echo=FALSE}
+library(knitr)
+opts_chunk$set(cache=TRUE, echo=TRUE, results="show", fig.height=6, fig.width=8, digits=4)
+```
+
+
+# Executive Summary
+
+The "Weight Lifting Exercises Dataset" from http://groupware.les.inf.puc-rio.br/har was used to train a "RandomForest" machine learning algorithm to predict the quality of performance of a specific dummbell exercise in 5 categories (A = exactly according to the specification, B-E various types of mistakes in performance of the exercise).
+
+The predictors were a set of 52(=4*13) "Inertial Measurement Unit" sensor data obtained from 4 sensors attached to the participant (arm, forearm, dumbbell and (waist)belt), each sensor contributing 13 variables.
+
+The model's accuracy on the trial data was 99.546 % (all correct classifications divided by total amount of cases = 19622). Interestingly, the error rate seems to vary inversely with the amount of cases present in the training data (very small error rate for category A but about 40 x times higher for category D, 0.03584229 % vs 1.46144279 %, see below confusion matrix and Fig. 1)
+
+Not all sensors seem equally important: Fig. 2 shows that in the first 15 most important variables, the arm sensor only appears one time (last line), suggesting that possibly a model could be built not using this sensor at all.
+
+
+The machine learning algorithm was applied to the 20 test cases available in the test data. All 20 test cases were predicted correctly with the model (data not shown, as they are usd to fill-in the assignment quiz)
+
+Future directions: build the model to use only three of the sensors?
+
+#Data set 
+
+Six young health participants were asked to perform one set of 10 repetitions of the Unilateral Dumbbell Biceps Curl in five different fashions (5 classes A-E): 
+
+* A = exactly according to the specification
+* B = throwing the elbows to the front 
+* C = lifting the dumbbell only halfway 
+* D = lowering the dumbbell only halfway
+* E = throwing the hips to the front
+
+Class A corresponds to the specified execution of the exercise, while the other 4 classes correspond to common mistakes. 
+
+## Structure of the data set
+
+6 participants, data from 4 sensors (accelerometers on the belt, forearm, arm, and dumbell) per participant, 10 repetitions
+
+Each sensor has a total of 38 items measured:
+
+variables in dataset
+
+* 1 = X = index?
+* 2 = username
+* 3 to 5 = timestamp data
+* 6 to 7 = window related
+* 4 blocks of 38 vars per sensor = 152 vars
+* classe = classification of the exercise aa A to E
+
+
+Each block of 38 vars consists of (13) sensor measurements, namely:
+
+* roll, pitch, yaw, total_accel
+* gyros_x, gyros_y, gyros_z
+* accel_x, accel_y, accel_z
+* magnet_x, magnet_y, magnet_z
+* and of (25) derived measurements: (24) for roll, pitch, yaw (consisting of: kurtosis, skewness, max, min, amplitude, avg, stddev, var) and (1) for total_accel
+
+The dataset has many rows where the derived measurements are not present, preventing the use of these measurements in model building
+Columns 1 to 7 equally do not seem relevant to prediction and where left out of the final training set.
+
+## Citation / Origin of data
+The "Weight Lifting Exercises Dataset" was generously supplied by "Human Activity Recognition" academic group at http://groupware.les.inf.puc-rio.br/har. 
+Citation: Velloso, E.; Bulling, A.; Gellersen, H.; Ugulino, W.; Fuks, H. Qualitative Activity Recognition of Weight Lifting Exercises. Proceedings of 4th International Conference in Cooperation with SIGCHI (Augmented Human '13) . Stuttgart, Germany: ACM SIGCHI, 2013. 
+
+For the Coursera project data sets were downloaded as follows: 
+
+* training set: https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+* test data: https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+
+## Data loading and predictor selection in R
+
+```{r }
+#get the data, set NA correctly
+fname <- "pml-training.csv"
+ds <- read.csv(fname, na.strings = c("NA", "", "#DIV/0!"))
+```
+
+```{r results='hide'}
+#reset some colums from "logical" to "numeric"
+loginames<-c("kurtosis_yaw_belt", "skewness_yaw_belt", "kurtosis_yaw_dumbbell", "skewness_yaw_dumbbell", "kurtosis_yaw_forearm", "skewness_yaw_forearm")
+lapply( c(1:6), function(x) {ds[loginames[x]]<<-as.numeric(unlist(ds[loginames[x]])); return(1)} )
+
+#col numbers for cols with derived results 
+cols_derived_to_delete<-c(12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 125, 126, 127, 128, 129, 130, 131, 132, 133, 134, 135, 136, 137, 138, 139, 141, 142, 143, 144, 145, 146, 147, 148, 149, 150 ) 
+
+other_cols_to_delete<-c(1:7)
+cols_to_delete<-c(other_cols_to_delete, cols_derived_to_delete)
+cols_to_keep<-c(1:160)
+
+tlogic<-cols_to_keep %in% cols_to_delete
+ds_raw<-ds[, cols_to_keep[! tlogic] ]
+dsd<-ds_raw
+
+#remove cols with NA
+dsd<-dsd[colSums(is.na(dsd)) == 0]
+```
+
+
+
+%===========================================================================
+
+# How we built the model 
+
+We choose to implement a random forest model using the 13 variables per sensor as indicated above; thus we have 4*13=52 predictor variable for the dependent variable "classe", the exercise quality category.
+We used the train function from the caret package with the method "parRF", a parallell implementation of random forest to speed up execution. There is only one model tuning factor, "mtry", the number of variables randomly sampled as candidates at each (decision tree) split. The parameter "mtry" was left at its default value = (sqrt(p) ~ 7 where p is number of variables (52).
+
+Random forest method combines Breiman's "bagging" idea and the random selection of features (the mtry parameter). The training algorithm for random forests applies the general technique of bootstrap aggregating, or bagging. Bagging repeatedly selects a random sample with replacement of the training set and fits trees to these samples.
+This bootstrapping procedure leads to better model performance because it decreases the variance of the model, without increasing the bias. 
+
+As explained at https://www.stat.berkeley.edu/~breiman/RandomForests/cc_home.htm#ooberr and on wikipedia https://en.wikipedia.org/wiki/Out-of-bag_error, in random forests, there is no need for cross-validation to get an unbiased estimate of the test set error. It is estimated internally, during the run.
+
+The out-of-bag OOB-error rate is the mean prediction error on each training sample for row x, using only the trees that did not have row x in their bootstrap sample.The OOB error tends to level off after a number of trees have been fit (see Fig XXX).
+
+# How we used cross validation
+As the OOB-error rate estimate is obtained during the model fitting procedure, there is no need to do separate cross validation (see above).
+
+# What we think the expected out of sample error is?
+The OOB-error rate was 0.45% (see below) and is an estimate for the out of sample error rate. The OOB rate quickly decreases with increasing number of trees tested (see Fig. 3).
+
+# Justification of choices we made 
+see above
+
+# Some results from the random forest model
+
+```{r results='hide'}
+#first model
+library(caret)
+set.seed(1956)
+training<-dsd
+
+#machine learning method 
+#parallell random forest
+mlm="parRF"
+
+#data
+pdata=training
+```
+
+We have run this training separately in a terminal (takes > 30 mins)
+```{r eval=FALSE}
+mod_prf<-train(classe ~ ., method=mlm, data=pdata, importance = TRUE, do.trace = 50)
+```
+and have saved the model to disk (with var name modrfq), to be loaded here
+
+```{r }
+load("parRF_001_obj_modrfq.bin")
+mod_prf<-modrfq
+print(mod_prf)
+```
+
+```{r }
+fm<-mod_prf["finalModel"]
+cfm<-fm[[1]]["confusion"]
+```
+
+
+```{r echo=FALSE, results='hold'}
+cat(sprintf("The confusion matrix shows correct / incorrect classifications\n\n"))
+print(cfm)
+```
+
+```{r results='hide'}
+ntotal<-sum(colSums(cfm$confusion[,1:5]))
+#calculate all correct classifications, numbers on diagonal in cfm
+sum<-0
+lapply(c(1:5), function(x){sum<<-sum+cfm$confusion[x,x]})
+correct_classifications<-sum
+overall_correct_rate<-sum/ntotal
+overall_wrong_classifications_rate <- (ntotal - correct_classifications)/ntotal
+```
+
+
+```{r echo=TRUE, results="hold"}
+cat(sprintf("Accuracy rate is = %.6s %%\n",100*overall_correct_rate))
+cat(sprintf("OOB error rate is = %.6s %%\n",100*overall_wrong_classifications_rate))
+```
+
+
+```{r }
+#plot error rate per class
+n_per_class <- summary(dsd$classe)
+err_per_class<-cfm$confusion[,6]
+
+g <- ggplot(data.frame(npc=n_per_class, epc=100*(err_per_class)), aes(x = npc, y = epc )) 
+g <- g + geom_point( colour = "blue", size=6)
+g <- g + xlab("n per class") + ylab("error rate in % per class") + ggtitle("Fig. 1: Error rate per class")
+g <- g + geom_text(label=c("A","B","C","D","E"), hjust=-1 )
+print(g)
+```
+
+
+
+```{r}
+#plot variable importance
+var_imp <- varImp(mod_prf, scale = FALSE)
+plot(var_imp, top = 15, main = "Fig. 2: Variable-Importance Plot", xlab = "Importance (Mean Decrease in Accuracy)") 
+```
+
+```{r}
+#plot oob-err as function of number of trees
+ntree<-unlist(fm[[1]]["ntree"])
+trees_idx<-c(1:ntree)
+err_vec<-fm[[1]]["err.rate"]
+oob_errs<-err_vec[[1]][,1]
+
+g <- ggplot(data.frame(tidx=trees_idx, oer=100*oob_errs), aes(x = tidx, y = oer )) 
+g <- g + geom_point( colour = "blue", size=2)
+g <- g + xlab("number of trees") + ylab("OOB error rate in %") + ggtitle("Fig. 3: OOB rate per number of trees tested")
+print(g)
+```
+
