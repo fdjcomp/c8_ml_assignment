@@ -107,7 +107,9 @@ dsd<-dsd[colSums(is.na(dsd)) == 0]
 
 %===========================================================================
 
-# How we built the model 
+# How we built the models 
+
+## Model RF-OOB - Random forest with bagging (Out-Of-Bag OOB error rate)
 
 We choose to implement a random forest model using the 13 variables per sensor as indicated above; thus we have 4*13=52 predictor variable for the dependent variable "classe", the exercise quality category.
 We used the train function from the caret package with the method "parRF", a parallell implementation of random forest to speed up execution. There is only one model tuning factor, "mtry", the number of variables randomly sampled as candidates at each (decision tree) split. The parameter "mtry" was left at its default value = (sqrt(p) ~ 7 where p is number of variables (52).
@@ -117,22 +119,41 @@ This bootstrapping procedure leads to better model performance because it decrea
 
 As explained at https://www.stat.berkeley.edu/~breiman/RandomForests/cc_home.htm#ooberr and on wikipedia https://en.wikipedia.org/wiki/Out-of-bag_error, in random forests, there is no need for cross-validation to get an unbiased estimate of the test set error. It is estimated internally, during the run.
 
-The out-of-bag OOB-error rate is the mean prediction error on each training sample for row x, using only the trees that did not have row x in their bootstrap sample.The OOB error tends to level off after a number of trees have been fit (see Fig XXX).
+The out-of-bag OOB-error rate is the mean prediction error on each training sample for row x, using only the trees that did not have row x in their bootstrap sample.The OOB error tends to level off after a number of trees have been fit (see Fig. 3).
 
-# How we used cross validation
+### How we used cross validation
 As the OOB-error rate estimate is obtained during the model fitting procedure, there is no need to do separate cross validation (see above).
 
-# What we think the expected out of sample error is?
-The OOB-error rate was 0.45% (see below) and is an estimate for the out of sample error rate. The OOB rate quickly decreases with increasing number of trees tested (see Fig. 3).
+### What we think the expected out of sample error is?
+The OOB-error rate was 0.45% (see below) and is an estimate for the out of sample error rate. The OOB rate quickly decreases with increasing number of trees tested (see Fig. 3). 
 
-# Justification of choices we made 
+### Justification of choices we made 
 see above
 
-# Some results from the random forest model
+## Model RF-CV - Random forest with cross-validation
+
+To see the difference, a second random forest model was made, using cross-validation, using the same 13 variables per sensor as indicated above; thus we have 4*13=52 predictor variable for the dependent variable "classe", the exercise quality category. We used the train function from the caret package with the method "parRF", a parallell implementation of random forest to speed up execution.
+
+### How we used cross validation
+
+The original data set is split up in a 60 % training data set and 40 % test data set (as per general guidelines for cross-validation); the RF-CV model is then trained on the training set.
+
+### What we think the expected out of sample error is?
+
+The overall out-of-sample error (false) classification rate = 0.94 % (see below) when we apply the RF-CV model to the test data. 
+
+##Compare RF-OOB with RF-CV
+RF-OOB has OOB error rate estimate = 0.4535 % which compares favorably with the error rate (0.94 %) found with cross-validation for the RF-CV model. The better performance of the RF-OOB is probably due to the fact that it is trained on the whole data set.
+
+
+# Code: Results RF-OOB model (OOB error rate)
 
 ```{r results='hide'}
-#first model
+#load libs
 library(caret)
+library(randomForest)
+
+#first model
 set.seed(1956)
 training<-dsd
 
@@ -144,23 +165,22 @@ mlm="parRF"
 pdata=training
 ```
 
-We have run this training separately in a terminal (takes > 30 mins)
 ```{r eval=FALSE}
+#run separately in a terminal (takes > 30 mins)
+#and save the model to disk (with var name modrfq)
 mod_prf<-train(classe ~ ., method=mlm, data=pdata, importance = TRUE, do.trace = 50)
 ```
-and have saved the model to disk (with var name modrfq), to be loaded here
 
 ```{r }
-load("parRF_001_obj_modrfq.bin")
+#now just load from disk
+load("mod_parRF_var_modrfq_001.Rdata")
 mod_prf<-modrfq
 print(mod_prf)
-```
 
-```{r }
+#get the confusion matrix
 fm<-mod_prf["finalModel"]
 cfm<-fm[[1]]["confusion"]
 ```
-
 
 ```{r echo=FALSE, results='hold'}
 cat(sprintf("The confusion matrix shows correct / incorrect classifications\n\n"))
@@ -216,4 +236,91 @@ g <- g + geom_point( colour = "blue", size=2)
 g <- g + xlab("number of trees") + ylab("OOB error rate in %") + ggtitle("Fig. 3: OOB rate per number of trees tested")
 print(g)
 ```
+
+# Code: Results RF-CV model (using cross-validation)
+
+```{r results='hide'}
+#uses  2 cores
+library(doParallel)
+options(cores=2)
+registerDoParallel()
+set.seed(1956)
+
+#split dsd into train = 60% test = 40% set 
+trainIndex <- createDataPartition(dsd$classe, p = .6, list = FALSE, times = 1)
+dsTrain <- dsd[ trainIndex,]
+dsTest  <- dsd[-trainIndex,]
+
+#in script run in terminal
+#save(dsTest, file="var_dsTest.Rdata")
+
+#set train control
+# 10-fold CV, repeated ten times
+ptunelength=10
+trc <- trainControl(method = "repeatedcv", number = 10, repeats = 10)
+
+#metric
+pmetric="Accuracy"
+
+#machine learning method
+mlm="parRF"
+
+#mk train test data
+#training<-dsd
+pdata=dsTrain
+```
+
+```{r eval=FALSE}
+#run in terminal and save
+modrfcv<-train(classe ~ ., method=mlm, data=pdata, trControl=trc, tunelenght=ptunelength, ntree=1000,  importance=TRUE, metric=pmetric, do.trace = 50, allowParallel=TRUE ) 
+
+```
+
+```{r results='hold'}
+#now just load the model from disk as var=modrfcv
+load("mod_parRF_var_modrfcv_003.Rdata")
+
+mod<-modrfcv
+
+#make predictions for dsTest data
+pred_mod<-predict(mod, newdata=dsTest)
+
+cfm<-confusionMatrix(pred_mod, dsTest$classe)
+
+#confusion mtx predicts
+cat("Model RF-CV: Test Set Predicted data Confusion matrix\n")
+print(cfm)
+cat("\n\n")
+
+#function to calculate overall true / false classifications
+otfclass<-function(cfm) {
+
+  nr<-nrow(cfm$table)
+  nc<-ncol(cfm$table)
+  
+  #true classifications is along diagnal
+  
+  vecT<-vector()
+  for ( idx in c(1:nr) ) {
+    vecT<-c(vecT, cfm$table[idx,idx])
+  }
+  #the false classifications are along column as col = REF
+  allTF<-colSums(cfm$table)
+  vecF<-allTF-vecT
+  
+  rateT<-sum(vecT)/sum(allTF)
+  rateF<-sum(vecF)/sum(allTF)
+  
+  rateT<-sum(vecT)/sum(allTF)
+  rateF<-sum(vecF)/sum(allTF)
+  
+  cat(sprintf("Overall true classification rate = %4.2f %%\n", rateT*100))
+  cat(sprintf("Overall false classification rate = %4.2f %%\n\n", rateF*100))
+}
+
+cat("Model RF-CV classification rates\n")
+otfclass(cfm)
+```
+
+
 
