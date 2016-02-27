@@ -74,8 +74,8 @@ img {
 <p>The predictors were a set of 52(=4*13) “Inertial Measurement Unit” sensor data obtained from 4 sensors attached to the participant (arm, forearm, dumbbell and (waist)belt), each sensor contributing 13 variables.</p>
 <p>The model’s accuracy on the trial data was 99.546 % (all correct classifications divided by total amount of cases = 19622). Interestingly, the error rate seems to vary inversely with the amount of cases present in the training data (very small error rate for category A but about 40 x times higher for category D, 0.03584229 % vs 1.46144279 %, see below confusion matrix and Fig. 1)</p>
 <p>Not all sensors seem equally important: Fig. 2 shows that in the first 15 most important variables, the arm sensor only appears one time (last line), suggesting that possibly a model could be built not using this sensor at all.</p>
-<p>The machine learning algorithm was applied to the 20 test cases available in the test data. All 20 test cases were predicted correctly with the model (data not shown, as they are usd to fill-in the assignment quiz)</p>
 <p>Future directions: build the model to use only three of the sensors?</p>
+<p>The machine learning algorithm was applied to the 20 test cases available in the test data. All 20 test cases for the assignment quiz were predicted correctly with the RF-OOB model (data in last section at end).</p>
 </div>
 <div id="data-set" class="section level1">
 <h1>Data set</h1>
@@ -392,6 +392,40 @@ otfclass(cfm)</code></pre>
 ## Model RF-CV classification rates
 ## Overall true classification rate = 99.06 %
 ## Overall false classification rate = 0.94 %</code></pre>
+</div>
+<div id="predictions-on-testing-set-20-cases-for-quiz-with-model-rf-oob" class="section level1">
+<h1>Predictions on testing set (20 cases) for quiz with model RF-OOB</h1>
+<pre class="r"><code>#get the data, set NA correctly
+fname &lt;- &quot;pml-testing.csv&quot;
+
+dsqtest &lt;- read.csv(fname, na.strings = c(&quot;NA&quot;, &quot;&quot;, &quot;#DIV/0!&quot;))
+
+preds&lt;-predict(modrfq, newdata=dsqtest)
+
+results &lt;- matrix(c(c(1:20), as.character(preds)), nrow = 20)
+
+print(results)</code></pre>
+<pre><code>##       [,1] [,2]
+##  [1,] &quot;1&quot;  &quot;B&quot; 
+##  [2,] &quot;2&quot;  &quot;A&quot; 
+##  [3,] &quot;3&quot;  &quot;B&quot; 
+##  [4,] &quot;4&quot;  &quot;A&quot; 
+##  [5,] &quot;5&quot;  &quot;A&quot; 
+##  [6,] &quot;6&quot;  &quot;E&quot; 
+##  [7,] &quot;7&quot;  &quot;D&quot; 
+##  [8,] &quot;8&quot;  &quot;B&quot; 
+##  [9,] &quot;9&quot;  &quot;A&quot; 
+## [10,] &quot;10&quot; &quot;A&quot; 
+## [11,] &quot;11&quot; &quot;B&quot; 
+## [12,] &quot;12&quot; &quot;C&quot; 
+## [13,] &quot;13&quot; &quot;B&quot; 
+## [14,] &quot;14&quot; &quot;A&quot; 
+## [15,] &quot;15&quot; &quot;E&quot; 
+## [16,] &quot;16&quot; &quot;E&quot; 
+## [17,] &quot;17&quot; &quot;A&quot; 
+## [18,] &quot;18&quot; &quot;B&quot; 
+## [19,] &quot;19&quot; &quot;B&quot; 
+## [20,] &quot;20&quot; &quot;B&quot;</code></pre>
 </div>
 
 

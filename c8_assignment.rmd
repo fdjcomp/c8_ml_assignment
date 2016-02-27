@@ -2,7 +2,7 @@
 title: "Qualitative activity recognition"
 author: "FDJ"
 date: "February 26, 2016"
-output: pdf_document
+output: html_document
 ---
 
 ```{r setoptions, echo=FALSE}
@@ -21,10 +21,10 @@ The model's accuracy on the trial data was 99.546 % (all correct classifications
 
 Not all sensors seem equally important: Fig. 2 shows that in the first 15 most important variables, the arm sensor only appears one time (last line), suggesting that possibly a model could be built not using this sensor at all.
 
-
-The machine learning algorithm was applied to the 20 test cases available in the test data. All 20 test cases were predicted correctly with the model (data not shown, as they are usd to fill-in the assignment quiz)
-
 Future directions: build the model to use only three of the sensors?
+
+The machine learning algorithm was applied to the 20 test cases available in the test data. All 20 test cases for the assignment quiz were predicted correctly with the RF-OOB model (data in last section at end).
+
 
 #Data set 
 
@@ -322,5 +322,19 @@ cat("Model RF-CV classification rates\n")
 otfclass(cfm)
 ```
 
+# Predictions on testing set (20 cases) for quiz with model RF-OOB
+```{r results='hold'}
 
 
+#get the data, set NA correctly
+fname <- "pml-testing.csv"
+
+dsqtest <- read.csv(fname, na.strings = c("NA", "", "#DIV/0!"))
+
+preds<-predict(modrfq, newdata=dsqtest)
+
+results <- matrix(c(c(1:20), as.character(preds)), nrow = 20)
+
+print(results)
+
+```
